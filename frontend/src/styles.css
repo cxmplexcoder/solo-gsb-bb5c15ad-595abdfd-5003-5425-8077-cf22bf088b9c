@@ -311,3 +311,64 @@ code {
   border: 1px solid var(--border); border-radius: 6px;
   padding: 10px; font-size: 11px;
 }
+
+/* ---------- batch rules page ---------- */
+.rules-layout { display: grid; grid-template-columns: 300px 1fr; gap: 14px; align-items: start; }
+.rules-side { padding: 10px 12px; }
+.rules-side-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 8px;
+}
+.rule-item {
+  border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; margin-bottom: 8px; cursor: pointer; background: #fff;
+}
+.rule-item:hover { background: #f8faff; }
+.rule-item.active { border-color: var(--primary); background: #f2f6ff; }
+.rule-item-name { font-weight: 600; font-size: 13px; margin-bottom: 3px; }
+.rule-item-meta, .rule-item-run { line-height: 1.5; }
+
+.rule-form-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px;
+}
+.rule-form-grid label { font-size: 12px; color: #414d61; }
+.rule-form-grid label.wide { grid-column: 1 / -1; }
+.rule-form-grid input,
+.rule-form-grid select,
+.rule-form-grid textarea { display: block; width: 100%; margin-top: 3px; }
+.rule-form-grid .req { color: var(--danger); }
+.rule-form-actions { display: flex; gap: 8px; margin-top: 10px; }
+
+.rule-spec {
+  display: grid; grid-template-columns: 90px 1fr; gap: 4px 12px;
+  margin: 0 0 12px; font-size: 13px;
+}
+.rule-spec dt { color: var(--muted); }
+.rule-spec dd { margin: 0; }
+.rule-spec .mono {
+  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px;
+  background: #f7f9fc; border-radius: 4px; padding: 2px 6px;
+}
+.rule-detail-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.preview-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 10px; }
+.preview-head .stat-box { min-width: 96px; padding: 6px 12px; font-size: 12px; }
+.preview-head .stat-box strong { font-size: 16px; }
+
+.proposal-list, .matched-list { margin-top: 12px; }
+.proposal-row, .matched-row {
+  display: flex; gap: 10px; align-items: baseline;
+  padding: 5px 2px; border-bottom: 1px solid #eef1f6; font-size: 13px;
+}
+.proposal-action { flex: none; width: 150px; font-weight: 600; font-size: 12px; }
+.proposal-time { flex: none; width: 150px; font-variant-numeric: tabular-nums; color: var(--muted); font-size: 12px; }
+.proposal-speaker { flex: none; width: 90px; font-weight: 600; }
+.proposal-topic { flex: none; width: 120px; }
+.proposal-note { flex: 1; }
+.matched-row .muted { flex: 1; word-break: break-word; }
+.preview-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+
+.badge.rule-tag {
+  background: #efe9fb; color: #6a4bb0;
+  margin-left: 6px; vertical-align: middle; font-weight: 500;
+}

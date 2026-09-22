@@ -2,6 +2,7 @@ import { Link, Route, Routes } from 'react-router-dom'
 import ProjectListPage from './pages/ProjectListPage.jsx'
 import EditorPage from './pages/EditorPage.jsx'
 import MergePage from './pages/MergePage.jsx'
+import RulesPage from './pages/RulesPage.jsx'
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<ProjectListPage />} />
           <Route path="/projects/:id" element={<EditorPage />} />
+          <Route path="/projects/:id/rules" element={<RulesPage />} />
           <Route path="/merge" element={<MergePage />} />
         </Routes>
       </main>

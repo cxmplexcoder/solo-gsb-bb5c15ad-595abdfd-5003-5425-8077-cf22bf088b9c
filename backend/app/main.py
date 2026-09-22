@@ -9,9 +9,12 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, importer
+from . import db, importer, rules
 from .merge import merge_documents
-from .schemas import DocumentIn, MergeRequest, ProjectIn, ProjectUpdate
+from .schemas import (
+    DocumentIn, MergeRequest, ProjectIn, ProjectUpdate,
+    RuleApplyRequest, RuleIn, RulePreviewRequest,
+)
 
 app = FastAPI(title="访谈音频校注", version="1.0.0")
 
@@ -186,6 +189,125 @@ def merge(payload: MergeRequest) -> dict:
         project = db.update_project(payload.projectId, None, result["document"])
         result["savedProject"] = {"id": project["id"], "name": project["name"]}
     return result
+
+
+# ---------- batch annotation rules ----------
+
+def _get_rule_or_404(project_id: str, rule_id: str) -> dict:
+    rule = db.get_rule(rule_id)
+    if rule is None or rule["projectId"] != project_id:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return rule
+
+
+def _latest_run_snapshot(rule_id: str) -> dict | None:
+    """Snapshot of the most recent run of the rule (for re-run semantics)."""
+    rule = db.get_rule(rule_id)
+    last = rule and rule.get("lastRun")
+    if not last:
+        return None
+    full = db.get_rule_run(last["id"])
+    return full["summary"] if full else None
+
+
+def _request_doc(payload, project: dict) -> dict:
+    """Document the request operates on: body document else saved project."""
+    return _doc(payload.document) if payload.document is not None \
+        else project["document"]
+
+
+@app.get("/api/projects/{project_id}/rules")
+def list_project_rules(project_id: str) -> list[dict]:
+    _get_or_404(project_id)
+    return db.list_rules(project_id)
+
+
+@app.post("/api/projects/{project_id}/rules", status_code=201)
+def create_rule(project_id: str, payload: RuleIn) -> dict:
+    _get_or_404(project_id)
+    try:
+        config = rules.clean_config(payload.config.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return db.create_rule(project_id, config)
+
+
+@app.put("/api/projects/{project_id}/rules/{rule_id}")
+def update_rule(project_id: str, rule_id: str, payload: RuleIn) -> dict:
+    _get_rule_or_404(project_id, rule_id)
+    try:
+        config = rules.clean_config(payload.config.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return db.update_rule(rule_id, config)
+
+
+@app.delete("/api/projects/{project_id}/rules/{rule_id}", status_code=204)
+def remove_rule(project_id: str, rule_id: str):
+    _get_rule_or_404(project_id, rule_id)
+    if not db.delete_rule(rule_id):
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return JSONResponse(status_code=204, content=None)
+
+
+@app.post("/api/projects/{project_id}/rules/{rule_id}/preview")
+def preview_rule(project_id: str, rule_id: str,
+                 payload: RulePreviewRequest) -> dict:
+    rule_row = _get_rule_or_404(project_id, rule_id)
+    project = db.get_project(project_id)
+    document = _request_doc(payload, project)
+    prev_snapshot = _latest_run_snapshot(rule_id)
+    result = rules.preview_rule(rule_row["config"], rule_id, document,
+                                prev_snapshot)
+    result["ruleId"] = rule_id
+    return result
+
+
+@app.post("/api/projects/{project_id}/rules/{rule_id}/apply")
+def apply_rule(project_id: str, rule_id: str,
+               payload: RuleApplyRequest) -> dict:
+    rule_row = _get_rule_or_404(project_id, rule_id)
+    project = _get_or_404(project_id)
+    document = _request_doc(payload, project)
+    prev_snapshot = _latest_run_snapshot(rule_id)
+    run_id = db.new_id("run")
+    result = rules.apply_rule(rule_row["config"], rule_id, run_id,
+                              document, prev_snapshot)
+    saved = db.update_project(project_id, None, result["document"])
+    run = db.add_rule_run(rule_id, len(result["snapshot"]["entries"]),
+                          result["snapshot"], run_id=run_id)
+    return {
+        "document": saved["document"],
+        "project": {"id": saved["id"], "name": saved["name"],
+                    "updatedAt": saved["updatedAt"]},
+        "run": run,
+        "stats": result["stats"],
+        "generated": result["generated"],
+    }
+
+
+@app.post("/api/projects/{project_id}/runs/{run_id}/undo")
+def undo_rule_run(project_id: str, run_id: str) -> dict:
+    project = _get_or_404(project_id)
+    run = db.get_rule_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="应用记录不存在")
+    rule_row = db.get_rule(run["ruleId"])
+    if rule_row is None or rule_row["projectId"] != project_id:
+        raise HTTPException(status_code=404, detail="应用记录不存在")
+    if run.get("undone"):
+        raise HTTPException(status_code=409, detail="该次应用已经撤销过了")
+    result = rules.undo_run(run, project["document"])
+    saved = db.update_project(project_id, None, result["document"])
+    db.mark_run_undone(run_id)
+    return {
+        "document": saved["document"],
+        "project": {"id": saved["id"], "name": saved["name"],
+                    "updatedAt": saved["updatedAt"]},
+        "removed": result["removed"],
+        "restored": result["restored"],
+        "detached": result["detached"],
+    }
 
 
 @app.get("/api/health")

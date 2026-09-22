@@ -43,4 +43,29 @@ export const api = {
 
   merge: (payload) =>
     request('/merge', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // ---- batch rules ----
+  listRules: (projectId) => request(`/projects/${projectId}/rules`),
+  createRule: (projectId, config) =>
+    request(`/projects/${projectId}/rules`, {
+      method: 'POST', body: JSON.stringify({ config }),
+    }),
+  updateRule: (projectId, ruleId, config) =>
+    request(`/projects/${projectId}/rules/${ruleId}`, {
+      method: 'PUT', body: JSON.stringify({ config }),
+    }),
+  deleteRule: (projectId, ruleId) =>
+    request(`/projects/${projectId}/rules/${ruleId}`, { method: 'DELETE' }),
+  previewRule: (projectId, ruleId, document) =>
+    request(`/projects/${projectId}/rules/${ruleId}/preview`, {
+      method: 'POST',
+      body: JSON.stringify(document ? { document } : {}),
+    }),
+  applyRule: (projectId, ruleId, document) =>
+    request(`/projects/${projectId}/rules/${ruleId}/apply`, {
+      method: 'POST',
+      body: JSON.stringify(document ? { document } : {}),
+    }),
+  undoRun: (projectId, runId) =>
+    request(`/projects/${projectId}/runs/${runId}/undo`, { method: 'POST' }),
 };

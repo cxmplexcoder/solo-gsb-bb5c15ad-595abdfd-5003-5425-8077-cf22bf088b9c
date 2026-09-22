@@ -71,9 +71,21 @@ export default function EditorPage() {
   const onTimelineSelect = (range) => setModal({ initial: range })
 
   const saveAnnotation = (ann) => {
+    const old = doc.annotations.find((a) => a.id === ann.id)
+    let nextAnn = ann
+    if (old) {
+      // preserve batch-rule provenance unless the content was hand-edited;
+      // an edit detaches the annotation from its rule (backend treats the
+      // detached annotation as manual and will never overwrite it)
+      const untouched = ['start', 'end', 'speaker', 'topic', 'note']
+        .every((k) => old[k] === ann[k])
+      if (untouched && old.ruleId) {
+        nextAnn = { ...ann, ruleId: old.ruleId, ruleRunId: old.ruleRunId }
+      }
+    }
     const exists = doc.annotations.some((a) => a.id === ann.id)
     const next = exists
-      ? doc.annotations.map((a) => (a.id === ann.id ? ann : a))
+      ? doc.annotations.map((a) => (a.id === ann.id ? nextAnn : a))
       : [
           ...doc.annotations,
           { ...makeAnnotation(ann.start, ann.end, ann.speaker,
@@ -163,6 +175,9 @@ export default function EditorPage() {
           <button className="btn" onClick={() => exportCopy('B')}>
             导出 B 离线副本
           </button>
+          <Link className="btn" to={`/projects/${id}/rules`}>
+            ⚙️ 规则批量标注
+          </Link>
           <Link className="btn" to="/merge">前往三方合并 →</Link>
           <button className="btn primary" disabled={saving || !dirty} onClick={save}>
             {saving ? '保存中…' : '保存'}
@@ -232,7 +247,14 @@ function AnnotationList({ annotations, onClick, onDelete }) {
             onClick={() => onClick(a)}
           >
             <div className="ann-chip-head">
-              <strong>{a.topic || '（未命名主题）'}</strong>
+              <strong>
+                {a.topic || '（未命名主题）'}
+                {a.ruleId && (
+                  <span className="badge rule-tag" title="由规则批量生成（手工编辑后将转为普通校注）">
+                    规则
+                  </span>
+                )}
+              </strong>
               <button
                 className="btn icon danger"
                 onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
