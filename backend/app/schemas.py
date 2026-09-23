@@ -38,3 +38,22 @@ class MergeRequest(BaseModel):
     b: DocumentIn
     resolutions: dict[str, Resolution] | None = None
     saveAsProject: str | None = None
+
+
+# ---------- rule-based batch annotation ----------
+
+class RuleIn(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    speaker: str = ""
+    pattern: str = ""
+    matchType: Literal["keyword", "regex", "none"] = "keyword"
+    caseSensitive: bool = False
+    minDuration: float = Field(default=0.0, ge=0)
+    topic: str = ""
+    noteTemplate: str = ""
+    color: str = "#5b8def"
+
+
+class RulePreviewRequest(BaseModel):
+    """Preview an (optionally still unsaved) rule against a project."""
+    rule: RuleIn | None = None

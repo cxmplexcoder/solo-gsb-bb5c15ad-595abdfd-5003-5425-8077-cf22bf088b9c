@@ -43,4 +43,28 @@ export const api = {
 
   merge: (payload) =>
     request('/merge', { method: 'POST', body: JSON.stringify(payload) }),
+
+  // ----- rule-based batch annotation -----
+  listRules: (projectId) =>
+    request(`/projects/${projectId}/rules`),
+  createRule: (projectId, rule) =>
+    request(`/projects/${projectId}/rules`, {
+      method: 'POST', body: JSON.stringify(rule),
+    }),
+  updateRule: (ruleId, rule) =>
+    request(`/rules/${ruleId}`, { method: 'PUT', body: JSON.stringify(rule) }),
+  deleteRule: (ruleId) =>
+    request(`/rules/${ruleId}`, { method: 'DELETE' }),
+  previewDraftRule: (projectId, rule) =>
+    request(`/projects/${projectId}/rules/preview`, {
+      method: 'POST', body: JSON.stringify({ rule }),
+    }),
+  previewRule: (ruleId) =>
+    request(`/rules/${ruleId}/preview`, { method: 'POST' }),
+  applyRule: (ruleId) =>
+    request(`/rules/${ruleId}/apply`, { method: 'POST' }),
+  listRuleRuns: (projectId) =>
+    request(`/projects/${projectId}/rule-runs`),
+  undoRuleRun: (runId) =>
+    request(`/rule-runs/${runId}/undo`, { method: 'POST' }),
 };

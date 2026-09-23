@@ -50,6 +50,12 @@ export default function AnnotationModal({ initial, speakers, onSave, onClose, on
     <div className="modal-backdrop" onMouseDown={onClose}>
       <div className="modal" onMouseDown={(e) => e.stopPropagation()}>
         <h3>{initial?.id ? '编辑校注' : '新建校注'}</h3>
+        {initial?.source === 'rule' && (
+          <div className="warn-box">
+            此校注由规则「{initial.ruleName || '批量规则'}」生成。保存修改后将转为
+            手工校注，再次运行该规则不会覆盖它。
+          </div>
+        )}
         <div className="range-readonly">
           区间 {fmtTime(Number(form.start))} – {fmtTime(Number(form.end))}
         </div>

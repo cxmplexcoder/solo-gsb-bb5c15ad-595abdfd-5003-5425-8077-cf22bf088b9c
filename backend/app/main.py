@@ -9,9 +9,16 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import db, importer
+from . import db, importer, rules
 from .merge import merge_documents
-from .schemas import DocumentIn, MergeRequest, ProjectIn, ProjectUpdate
+from .schemas import (
+    DocumentIn,
+    MergeRequest,
+    ProjectIn,
+    ProjectUpdate,
+    RuleIn,
+    RulePreviewRequest,
+)
 
 app = FastAPI(title="访谈音频校注", version="1.0.0")
 
@@ -158,6 +165,126 @@ async def import_into_project(project_id: str, request: Request) -> dict:
     return db.update_project(project_id, None, doc)
 
 
+# ---------- rule-based batch annotation ----------
+
+def _rule_dict(rule_row: dict) -> dict:
+    """Convert a stored rule (camelCase API shape) to engine shape."""
+    return {
+        "name": rule_row["name"],
+        "speaker": rule_row.get("speaker", ""),
+        "pattern": rule_row.get("pattern", ""),
+        "matchType": rule_row.get("matchType", "keyword"),
+        "caseSensitive": rule_row.get("caseSensitive", False),
+        "minDuration": rule_row.get("minDuration", 0.0),
+        "topic": rule_row.get("topic", ""),
+        "noteTemplate": rule_row.get("noteTemplate", ""),
+        "color": rule_row.get("color", rules.DEFAULT_COLOR),
+    }
+
+
+def _preview(project_id: str, rule_config: dict, rule_id: str) -> dict:
+    try:
+        return rules.evaluate_rule(rule_config, rule_id,
+                                   _get_or_404(project_id)["document"])
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/projects/{project_id}/rules")
+def list_rules(project_id: str) -> list[dict]:
+    _get_or_404(project_id)
+    return db.list_rules(project_id)
+
+
+@app.post("/api/projects/{project_id}/rules", status_code=201)
+def create_rule(project_id: str, payload: RuleIn) -> dict:
+    _get_or_404(project_id)
+    data = payload.model_dump()
+    try:
+        rules.compile_matcher(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return db.create_rule(project_id, data)
+
+
+@app.get("/api/rules/{rule_id}")
+def get_rule(rule_id: str) -> dict:
+    rule = db.get_rule(rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return rule
+
+
+@app.put("/api/rules/{rule_id}")
+def update_rule(rule_id: str, payload: RuleIn) -> dict:
+    existing = db.get_rule(rule_id)
+    if existing is None:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    data = payload.model_dump()
+    try:
+        rules.compile_matcher(data)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return db.update_rule(rule_id, data)
+
+
+@app.delete("/api/rules/{rule_id}", status_code=204)
+def remove_rule(rule_id: str):
+    if not db.delete_rule(rule_id):
+        raise HTTPException(status_code=404, detail="规则不存在")
+    return JSONResponse(status_code=204, content=None)
+
+
+@app.post("/api/projects/{project_id}/rules/preview")
+def preview_unsaved_rule(project_id: str, payload: RulePreviewRequest) -> dict:
+    """Preview a rule draft (no rule id yet) against the project."""
+    if payload.rule is None:
+        raise HTTPException(status_code=400, detail="缺少 rule")
+    return _preview(project_id, payload.rule.model_dump(), "preview")
+
+
+@app.post("/api/rules/{rule_id}/preview")
+def preview_saved_rule(rule_id: str) -> dict:
+    rule = db.get_rule(rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    try:
+        return rules.evaluate_rule(
+            _rule_dict(rule), rule_id,
+            _get_or_404(rule["projectId"])["document"],
+            db.rule_tombstones(rule_id),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/rules/{rule_id}/apply")
+def apply_rule(rule_id: str) -> dict:
+    rule = db.get_rule(rule_id)
+    if rule is None:
+        raise HTTPException(status_code=404, detail="规则不存在")
+    result = db.apply_rule_run(rule_id)
+    return {"run": result["run"], "document": result["document"]}
+
+
+@app.get("/api/projects/{project_id}/rule-runs")
+def list_rule_runs(project_id: str) -> list[dict]:
+    _get_or_404(project_id)
+    return db.list_rule_runs(project_id)
+
+
+@app.post("/api/rule-runs/{run_id}/undo")
+def undo_rule_run(run_id: str) -> dict:
+    run = db.get_rule_run(run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail="应用记录不存在")
+    try:
+        result = db.undo_rule_run(run_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {"run": result["run"], "document": result["document"]}
+
+
 # ---------- three-way merge ----------
 
 @app.post("/api/merge")
@@ -196,4 +323,14 @@ def health() -> dict:
 # ---------- static frontend (served in the Docker image) ----------
 
 if os.path.isdir(STATIC_DIR):
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def spa_fallback(full_path: str):
+        from fastapi.responses import FileResponse
+
+        target = os.path.join(STATIC_DIR, full_path)
+        if full_path and os.path.isfile(target):
+            return FileResponse(target)
+        # client-side routes (projects/:id/rules, merge, ...) -> index.html
+        return FileResponse(os.path.join(STATIC_DIR, "index.html"))
+
     app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")

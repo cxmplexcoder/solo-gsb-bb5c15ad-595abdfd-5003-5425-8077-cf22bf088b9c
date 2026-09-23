@@ -71,14 +71,28 @@ export default function EditorPage() {
   const onTimelineSelect = (range) => setModal({ initial: range })
 
   const saveAnnotation = (ann) => {
-    const exists = doc.annotations.some((a) => a.id === ann.id)
-    const next = exists
-      ? doc.annotations.map((a) => (a.id === ann.id ? ann : a))
-      : [
-          ...doc.annotations,
-          { ...makeAnnotation(ann.start, ann.end, ann.speaker,
-              ann.topic, ann.note), color: ann.color },
-        ]
+    const existing = doc.annotations.find((a) => a.id === ann.id)
+    let nextAnn
+    if (existing) {
+      // Editing a rule-generated annotation detaches it: from now on it is
+      // treated as a manual annotation and re-running the rule won't replace
+      // or remove it.
+      const wasRule = existing.source === 'rule'
+      nextAnn = { ...ann }
+      if (wasRule) {
+        // detach ownership: ruleId/ruleSlot stay as provenance so a later
+        // run recognizes this slot is occupied by a manual annotation.
+        delete nextAnn.source
+        delete nextAnn.ruleName
+      }
+    } else {
+      nextAnn = makeAnnotation(ann.start, ann.end, ann.speaker,
+        ann.topic, ann.note)
+      nextAnn.color = ann.color
+    }
+    const next = existing
+      ? doc.annotations.map((a) => (a.id === ann.id ? nextAnn : a))
+      : [...doc.annotations, nextAnn]
     update({ annotations: next })
     setModal(null)
   }
@@ -149,6 +163,9 @@ export default function EditorPage() {
           {dirty && <span className="badge warn">未保存</span>}
         </div>
         <div className="head-actions">
+          <Link className="btn" to={`/projects/${id}/rules`}>
+            ⚙️ 规则批量标注
+          </Link>
           <button className="btn" onClick={() => importRef.current?.click()}>
             导入转写
           </button>
@@ -232,7 +249,14 @@ function AnnotationList({ annotations, onClick, onDelete }) {
             onClick={() => onClick(a)}
           >
             <div className="ann-chip-head">
-              <strong>{a.topic || '（未命名主题）'}</strong>
+              <strong>
+                {a.topic || '（未命名主题）'}
+                {a.source === 'rule' && (
+                  <span className="badge rule-tag" title={a.ruleName || ''}>
+                    规则
+                  </span>
+                )}
+              </strong>
               <button
                 className="btn icon danger"
                 onClick={(e) => { e.stopPropagation(); onDelete(a.id) }}
